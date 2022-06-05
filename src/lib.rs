@@ -4,7 +4,7 @@ use std::path::{PathBuf, Path};
 use serde::{Serialize, Deserialize};
 
 #[derive(Serialize, Deserialize)]
-struct ConfigSchemaChildEd25519 {
+pub struct ConfigSchemaChildEd25519 {
     public: String,
     private: String,
     enabled: bool
@@ -18,27 +18,41 @@ pub struct ConfigSchema {
     ed25519: ConfigSchemaChildEd25519
 }
 
-pub fn get_config_path() -> String {
-    let mut path = PathBuf::from(home_dir().expect("Failed to get user's home directory for Vigor configuration file."));
-    path.set_file_name(".vigor");
-    path.set_extension(".conf");
-    String::from(path.display().to_string())
+pub fn get_config_path() -> Result<String, String> {
+    match home_dir() {
+        Some(home) => {
+            let mut path = PathBuf::from(home);
+            path.set_file_name(".vigor");
+            path.set_extension(".conf");
+            Ok(String::from(path.display().to_string()))
+        },
+        None => Err(String::from("Failed to get user's home directory for Vigor configuration file."))
+    }
 }
 
-pub fn init_config() {
-    let config_path: String = get_config_path();
-    if !Path::new(&config_path).exists() {
-        let default = ConfigSchema {
-            preferred_username: String::from("nobody"),
-            email: String::from("nobody@localhost"),
-            password: String::from("hunter2"), // i'm not funny.
-            ed25519: ConfigSchemaChildEd25519 {
-                public: String::from("/path/to/your/keys/vigor.pem.pub"),
-                private: String::from("/path/to/your/keys/vigor.pem"),
-                enabled: false
+pub fn init_config() -> Result<String, String> {
+    match get_config_path() {
+        Ok(config_path) => {
+            if !Path::new(&config_path).exists() {
+                let default = ConfigSchema {
+                    preferred_username: String::from("nobody"),
+                    email: String::from("nobody@localhost"),
+                    password: String::from("hunter2"), // i'm not funny.
+                    ed25519: ConfigSchemaChildEd25519 {
+                        public: String::from("/path/to/your/keys/vigor.pem.pub"),
+                        private: String::from("/path/to/your/keys/vigor.pem"),
+                        enabled: false
+                    }
+                };
+                match fs::write(config_path, serde_json::to_string(&default).unwrap()) {
+                    Ok(_) => Ok(String::from("Default configuration written successfully.")),
+                    Err(error) => Err(error.to_string())
+                }
+            } else {
+                Ok(String::from("Configuration already exists."))
             }
-        };
-        fs::write(config_path, serde_json::to_string(&default).unwrap()).expect("Failed to write default Vigor configuration file.");
+        },
+        Err(message) => Err(message)
     }
 }
 
