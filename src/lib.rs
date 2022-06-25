@@ -236,22 +236,8 @@ impl Vigor {
         }
     }
 
-    /// Performs account creation to a Vigor host.
-    ///
-    /// This method expects three booleans after the host argument for whether email, password, and/or Ed25519 should be shared.
-    /// At least one authentication method must be shared.
-    ///
-    /// # Examples
-    ///
-    /// ```ignore
-    /// // assuming you already have an instance called "agent"
-    /// agent.put("http://example.com/claims/", true, true, true).unwrap();
-    /// ```
-    pub fn put(&self, host: &str, share_email: bool, use_password: bool, use_ed25519: bool) -> Result<(), Error> {
+    fn form_account_payload(&self, share_email: bool, use_password: bool, use_ed25519: bool) -> Result<serde_json::Map<String, serde_json::Value>, Error> {
         let mut payload = serde_json::Map::new();
-        if !use_password && !use_ed25519 {
-            return Err(Error {message: "At least one authentication method must exist on the new account.".to_owned()})
-        }
         if share_email {
             payload.insert("email".to_owned(), serde_json::Value::String(self.config.email.to_owned()));
         }
@@ -275,8 +261,31 @@ impl Vigor {
                 }
             }
         }
-        match Vigor::process_reqwest_response(self.client.put(Vigor::host_finalize(self, &host)).json(&serde_json::to_string(&payload).unwrap()).send()) {
-            Ok(_) => Ok(()),
+        Ok(payload)
+    }
+
+    /// Performs account creation to a Vigor host.
+    ///
+    /// This method expects three booleans after the host argument for whether email, password, and/or Ed25519 should be shared, respectively.
+    /// At least one authentication method must be shared.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// // assuming you already have an instance called "agent"
+    /// agent.put("http://example.com/claims/", true, true, true).unwrap();
+    /// ```
+    pub fn put(&self, host: &str, share_email: bool, use_password: bool, use_ed25519: bool) -> Result<(), Error> {
+        if !use_password && !use_ed25519 {
+            return Err(Error {message: "At least one authentication method must exist on the new account.".to_owned()})
+        }
+        match Vigor::form_account_payload(self, share_email, use_password, use_ed25519) {
+            Ok(payload) => {
+                match Vigor::process_reqwest_response(self.client.put(Vigor::host_finalize(self, &host)).json(&serde_json::to_string(&payload).unwrap()).send()) {
+                    Ok(_) => Ok(()),
+                    Err(error) => Err(error)
+                }
+            },
             Err(error) => Err(error)
         }
     }
@@ -420,7 +429,36 @@ impl Vigor {
         }
     }
 
-    // function here to patch
-
-    // function here to perform request with token automatically as header.
+    /// Performs account modification to a Vigor host.
+    ///
+    /// This method expects three booleans after the host argument for whether email, password, and/or Ed25519 should be updated, respectively.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// // assuming you already have an instance called "agent"
+    /// agent.patch("http://example.com/claims/", vigor_agent::AuthMode::Auto).unwrap();
+    /// ```
+    pub fn patch(&self, host: &str, mode: AuthMode, share_email: bool, use_password: bool, use_ed25519: bool) -> Result<(), Error> {
+        if !share_email && !use_password && !use_ed25519 {
+            return Err(Error {message: "At least one account property needs to be updated.".to_owned()});
+        }
+        match Vigor::form_authentication(self, mode) {
+            Ok(payload) => {
+                // .unwrap() should be safe, since serialized JSON from Vigor::form_authentication is certain to be valid in this scope.
+                let mut payload_mod: serde_json::Map<String, serde_json::Value> = serde_json::from_str::<serde_json::Value>(&payload).unwrap().as_object().unwrap().clone();
+                match Vigor::form_account_payload(self, share_email, use_password, use_ed25519) {
+                    Ok(changes) => {
+                        payload_mod.insert("new".to_string(), serde_json::Value::Object(changes));
+                        match Vigor::process_reqwest_response(self.client.patch(Vigor::host_finalize(self, &host)).json(&payload_mod).send()) { // TODO update payload to include patch.
+                            Ok(_) => Ok(()),
+                            Err(error) => Err(error)
+                        }
+                    },
+                    Err(error) => Err(error)
+                }
+            },
+            Err(error) => Err(error)
+        }
+    }
 }
