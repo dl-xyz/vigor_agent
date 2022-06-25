@@ -1,5 +1,5 @@
 # vigor_agent
-Rust client library for [Vigor](https://dreamerslegacy.xyz/git/dlxyz/vigor). Implements methods for account management and token retrieval.
+Rust client library for [Vigor](https://dreamerslegacy.xyz/git/dlxyz/vigor), the JWT-based state-less HTTP authentication server. Implements methods for account management and token retrieval.
 
 ## Install
 Under your `Cargo.toml` file, insert the following line into the `dependencies` section.
