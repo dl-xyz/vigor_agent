@@ -56,10 +56,21 @@ struct ConfigSchema {
     ed25519: ConfigEd25519Schema
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+// definitions for transmission structs.
+#[derive(serde::Serialize)]
 struct Authentication {
     mode: String,
     answer: String
+}
+
+#[derive(serde::Deserialize)]
+struct TokenResponse {
+    jwt: String
+}
+
+#[derive(serde::Deserialize)]
+struct ErrorResponse {
+    error: String
 }
 
 /// Represents configuration and path information for agent structure.
@@ -192,6 +203,39 @@ impl Vigor {
         url.display().to_string()
     }
 
+    fn process_reqwest_response(response: reqwest::Result<reqwest::blocking::Response>) -> Result<reqwest::blocking::Response, Error> {
+        match response {
+            Ok(response) => {
+                // handling for cases where there is a response available.
+                // does not exclusively imply result is Ok.
+                match response.status() {
+                    reqwest::StatusCode::OK => Ok(response),
+                    _ => {
+                        match response.json::<ErrorResponse>() {
+                            Ok(payload) => {
+                                Err(Error {message: payload.error})
+                            },
+                            Err(error) => Err(Error {message: error.to_string()})
+                        }
+                    }
+                }
+            }
+            Err(error) => {
+                // handling for cases where there is no response available.
+                let mut message = error.to_string();
+
+                // looked at source for fmt::Display trait of reqwest:Error, wrote extra cases.
+                if error.is_timeout() {
+                    message.push_str(" due to time out"); // no timeout warning, adding here instead.
+                }
+                if error.is_connect() {
+                    message.push_str(" due to connection"); // no connection warning, adding here instead.
+                }
+                Err(Error {message: message})
+            }
+        }
+    }
+
     /// Performs account creation to a Vigor host.
     ///
     /// This method expects three booleans after the host argument for whether email, password, and/or Ed25519 should be shared.
@@ -231,11 +275,9 @@ impl Vigor {
                 }
             }
         }
-        match self.client.put(Vigor::host_finalize(self, &host)).json(&serde_json::to_string(&payload).unwrap()).send() {
+        match Vigor::process_reqwest_response(self.client.put(Vigor::host_finalize(self, &host)).json(&serde_json::to_string(&payload).unwrap()).send()) {
             Ok(_) => Ok(()),
-            Err(error) => {
-                Err(Error {message: format!("{}", error)})
-            }
+            Err(error) => Err(error)
         }
     }
 
@@ -333,20 +375,45 @@ impl Vigor {
         }
     }
 
+    /// Performs token retrieval to a Vigor host.
+    ///
+    /// # Examples
+    /// ```ignore
+    /// // assuming you already have an instance called "agent"
+    /// agent.get("http://example.com/claims/", vigor_agent::AuthMode::Auto).unwrap();
+    /// ```
+    pub fn get(&self, host: &str, mode: AuthMode) -> Result<String, Error> {
+        match Vigor::form_authentication(self, mode) {
+            Ok(payload) => {
+                match Vigor::process_reqwest_response(self.client.get(Vigor::host_finalize(self, &host)).json(&payload).send()) {
+                    Ok(response) => {
+                        match response.json::<TokenResponse>() {
+                            Ok(payload) => Ok(payload.jwt),
+                            Err(error) => Err(Error {message: error.to_string()})
+                        }
+                    },
+                    Err(error) => Err(error)
+                }
+            },
+            Err(error) => Err(error)
+        }
+    }
+
+
     /// Performs account deletion to a Vigor host.
     ///
     /// # Examples
     ///
     /// ```ignore
     /// // assuming you already have an instance called "agent"
-    /// agent.delete("http://example.com/claims/").unwrap();
+    /// agent.delete("http://example.com/claims/", vigor_agent::AuthMode::Auto).unwrap();
     /// ```
     pub fn delete(&self, host: &str, mode: AuthMode) -> Result<(), Error> {
         match Vigor::form_authentication(self, mode) {
             Ok(payload) => {
-                match self.client.delete(Vigor::host_finalize(self, &host)).json(&payload).send() { // TODO payload fix.
+                match Vigor::process_reqwest_response(self.client.delete(Vigor::host_finalize(self, &host)).json(&payload).send()) {
                     Ok(_) => Ok(()),
-                    Err(error) => Err(Error {message: format!("{}", error)})
+                    Err(error) => Err(error)
                 }
             },
             Err(error) => Err(error)
@@ -354,8 +421,6 @@ impl Vigor {
     }
 
     // function here to patch
-
-    // function here to get token.
 
     // function here to perform request with token automatically as header.
 }
