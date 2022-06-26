@@ -351,33 +351,25 @@ impl Vigor {
         }
     }
 
-    fn form_authentication_ed25519(&self) -> Result<String, Error> {
+    fn form_authentication_ed25519(&self) -> Result<Authentication, Error> {
         match Vigor::get_authentication_ed25519(self) {
             Ok(answer) => {
-                let json = Authentication {
-                    mode: "ed25519".to_owned(),
-                    answer: answer
-                };
-                Ok(serde_json::to_string(&json).unwrap())
+                Ok(Authentication {mode: "ed25519".to_owned(), answer: answer})
             },
             Err(error) => Err(error)
         }
     }
 
-    fn form_authentication_password(&self) -> Result<String, Error> {
+    fn form_authentication_password(&self) -> Result<Authentication, Error> {
         match Vigor::get_authentication_password(self) {
             Ok(answer) => {
-                let json = Authentication {
-                    mode: "password".to_owned(),
-                    answer: answer
-                };
-                Ok(serde_json::to_string(&json).unwrap())
+                Ok(Authentication {mode: "password".to_owned(), answer: answer})
             },
             Err(error) => Err(error)
         }
     }
 
-    fn form_authentication(&self, mode: AuthMode) -> Result<String, Error> {
+    fn form_authentication(&self, mode: AuthMode) -> Result<Authentication, Error> {
         match mode {
             AuthMode::Ed25519 => {
                 Vigor::form_authentication_ed25519(self)
@@ -473,8 +465,7 @@ impl Vigor {
         }
         match Vigor::form_authentication(self, mode) {
             Ok(payload) => {
-                // .unwrap() should be safe, since serialized JSON from Vigor::form_authentication is certain to be valid in this scope.
-                let mut payload_mod: serde_json::Map<String, serde_json::Value> = serde_json::from_str::<serde_json::Value>(&payload).unwrap().as_object().unwrap().clone();
+                let mut payload_mod: serde_json::Map<String, serde_json::Value> = serde_json::to_value(payload).unwrap().as_object().unwrap().clone();
                 match Vigor::form_account_payload(self, share_email, use_password, use_ed25519) {
                     Ok(changes) => {
                         payload_mod.insert("new".to_string(), serde_json::Value::Object(changes));

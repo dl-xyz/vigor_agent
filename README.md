@@ -6,6 +6,6 @@ Under your `Cargo.toml` file, insert the following line into the `dependencies` 
 
 ```toml
 [dependencies]
-vigor_agent = "0.1.0"
+vigor_agent = "0.1.2"
 ```
 Upon running `cargo build`, the Cargo package for this library and its dependencies will be automatically downloaded and installed.
