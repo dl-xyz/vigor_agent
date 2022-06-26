@@ -5,6 +5,7 @@ edition = "2021"
 description = "Client library for Vigor servers."
 license = "MIT"
 repository = "https://dreamerslegacy.xyz/git/dlxyz/vigor_agent"
+documentation = "https://docs.rs/vigor_agent"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
