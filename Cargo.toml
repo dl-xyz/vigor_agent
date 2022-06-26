@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 description = "Client library for Vigor servers."
 license = "MIT"
+repository = "https://dreamerslegacy.xyz/git/dlxyz/vigor_agent"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -11,7 +12,7 @@ license = "MIT"
 dirs = "4.0.0"
 serde = { version = "1.0.137", features = ["derive"] }
 serde_json = "1.0.81"
-reqwest = { version = "0.11.10", features = ["blocking", "json"] }
+ureq = { version = "2.4.0", features = ["json", "charset"] }
 pem-rfc7468 = { version = "0.6.0", features = ["alloc"] }
 ed25519-dalek = "1.0.1"
 hex = "0.4"

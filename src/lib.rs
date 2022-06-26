@@ -12,6 +12,28 @@
 //! Formats such as OpenSSH are not guaranteed to work.
 //! The private key is expected to adhere to RFC 7468, PKCS8 and unencrypted.
 //!
+//! Minimal format verification is done on private key material. For all intended purposes, assume the library would foolishly accept random noise as a private key.
+//! You are responsible for implementing safety checks for inappropriate private keys.
+//!
+//! Also keep in mind that this library is purely synchronous, for the purposes of simplicity and a less bloated dependency tree.
+//! For use cases where blocking execution is inappropriate and/or inadaquete, it should be noted that synchronous code can be executed asynchronously, however not vice versa.
+//! If all else fails, the rhetorical question "have you tried threading" should come to mind.
+//!
+//! ## Usage
+//! Use `Vigor::new()` to start an agent instance, after importing.
+//! See documentation for a full list of available methods.
+//!
+//! ```no_run
+//! use vigor_agent;
+//!
+//! fn main() {
+//!     // you're advised to apply error handling here, instead of just recklessly using .unwrap()
+//!     let mut agent = vigor_agent::Vigor::new().unwrap();
+//!     agent.init().unwrap();
+//!     println!(agent.get("http://example.com/claims/", vigor_agent::AuthMode::Auto).unwrap());
+//! }
+//! ```
+//!
 
 use std::fs;
 use std::fmt;
@@ -19,7 +41,7 @@ use std::path::PathBuf;
 
 extern crate dirs;
 extern crate serde;
-extern crate reqwest;
+extern crate ureq;
 extern crate pem_rfc7468;
 extern crate ed25519_dalek;
 extern crate hex;
@@ -73,13 +95,12 @@ struct ErrorResponse {
     error: String
 }
 
-/// Represents configuration and path information for agent structure.
+/// Configuration and path information for agent structure. Includes implementations for agent logic.
 ///
 /// Consume implemented methods for initialization, see `new` method.
 pub struct Vigor {
     config: ConfigSchema,
-    path: PathBuf,
-    client: reqwest::blocking::Client
+    path: PathBuf
 }
 
 impl fmt::Debug for Vigor {
@@ -167,12 +188,27 @@ impl Vigor {
 
     /// Creates a new `Vigor` agent.
     ///
+    /// The default configuration structure as JSON appears as follows:
+    ///
+    /// ```text
+    /// {
+    ///     "preferred_username": "nobody",
+    ///     "email": "nobody@localhost",
+    ///     "password": "hunter2",
+    ///     "ed25519": {
+    ///         "public": "/path/to/your/keys/vigor.pem.pub",
+    ///         "private": "/path/to/your/keys/vigor.pem",
+    ///         "enabled": false
+    ///     }
+    /// }
+    /// ```
+    ///
     /// # Examples
     ///
     /// To initialize a new instance:
     ///
-    /// ```ignore
-    /// let mut agent = Vigor::new().unwrap();
+    /// ```no_run
+    /// let mut agent = vigor_agent::Vigor::new().unwrap();
     /// agent.init().unwrap();
     /// ```
     pub fn new() -> Result<Vigor, Error> {
@@ -189,8 +225,7 @@ impl Vigor {
                             enabled: false
                         }
                     },
-                    path: config_path,
-                    client: reqwest::blocking::Client::new()
+                    path: config_path
                 })
             },
             Err(error) => Err(error)
@@ -203,36 +238,21 @@ impl Vigor {
         url.display().to_string()
     }
 
-    fn process_reqwest_response(response: reqwest::Result<reqwest::blocking::Response>) -> Result<reqwest::blocking::Response, Error> {
+    fn process_request_response(response: Result<ureq::Response, ureq::Error>) -> Result<ureq::Response, Error> {
         match response {
-            Ok(response) => {
-                // handling for cases where there is a response available.
-                // does not exclusively imply result is Ok.
-                match response.status() {
-                    reqwest::StatusCode::OK => Ok(response),
-                    _ => {
-                        match response.json::<ErrorResponse>() {
-                            Ok(payload) => {
-                                Err(Error {message: payload.error})
-                            },
-                            Err(error) => Err(Error {message: error.to_string()})
-                        }
-                    }
+            Ok(response) => Ok(response),
+            Err(ureq::Error::Status(code, response)) => {
+                match response.into_json::<ErrorResponse>() {
+                    Ok(payload) => {
+                        let mut message = code.to_string();
+                        message.push_str(": ");
+                        message.push_str(&payload.error);
+                        Err(Error {message: message})
+                    },
+                    Err(error) => Err(Error {message: error.to_string()})
                 }
             }
-            Err(error) => {
-                // handling for cases where there is no response available.
-                let mut message = error.to_string();
-
-                // looked at source for fmt::Display trait of reqwest:Error, wrote extra cases.
-                if error.is_timeout() {
-                    message.push_str(" due to time out"); // no timeout warning, adding here instead.
-                }
-                if error.is_connect() {
-                    message.push_str(" due to connection"); // no connection warning, adding here instead.
-                }
-                Err(Error {message: message})
-            }
+            Err(error) => Err(Error{message: error.to_string()})
         }
     }
 
@@ -271,7 +291,9 @@ impl Vigor {
     ///
     /// # Examples
     ///
-    /// ```ignore
+    /// ```no_run
+    /// # let mut agent = vigor_agent::Vigor::new().unwrap();
+    /// # agent.init().unwrap();
     /// // assuming you already have an instance called "agent"
     /// agent.put("http://example.com/claims/", true, true, true).unwrap();
     /// ```
@@ -281,7 +303,7 @@ impl Vigor {
         }
         match Vigor::form_account_payload(self, share_email, use_password, use_ed25519) {
             Ok(payload) => {
-                match Vigor::process_reqwest_response(self.client.put(Vigor::host_finalize(self, &host)).json(&serde_json::to_string(&payload).unwrap()).send()) {
+                match Vigor::process_request_response(ureq::put(&Vigor::host_finalize(self, &host)).send_json(payload)) {
                     Ok(_) => Ok(()),
                     Err(error) => Err(error)
                 }
@@ -387,16 +409,18 @@ impl Vigor {
     /// Performs token retrieval to a Vigor host.
     ///
     /// # Examples
-    /// ```ignore
+    /// ```no_run
+    /// # let mut agent = vigor_agent::Vigor::new().unwrap();
+    /// # agent.init().unwrap();
     /// // assuming you already have an instance called "agent"
     /// agent.get("http://example.com/claims/", vigor_agent::AuthMode::Auto).unwrap();
     /// ```
     pub fn get(&self, host: &str, mode: AuthMode) -> Result<String, Error> {
         match Vigor::form_authentication(self, mode) {
             Ok(payload) => {
-                match Vigor::process_reqwest_response(self.client.get(Vigor::host_finalize(self, &host)).json(&payload).send()) {
+                match Vigor::process_request_response(ureq::get(&Vigor::host_finalize(self, &host)).send_json(payload)) {
                     Ok(response) => {
-                        match response.json::<TokenResponse>() {
+                        match response.into_json::<TokenResponse>() {
                             Ok(payload) => Ok(payload.jwt),
                             Err(error) => Err(Error {message: error.to_string()})
                         }
@@ -413,14 +437,16 @@ impl Vigor {
     ///
     /// # Examples
     ///
-    /// ```ignore
+    /// ```no_run
+    /// # let mut agent = vigor_agent::Vigor::new().unwrap();
+    /// # agent.init().unwrap();
     /// // assuming you already have an instance called "agent"
     /// agent.delete("http://example.com/claims/", vigor_agent::AuthMode::Auto).unwrap();
     /// ```
     pub fn delete(&self, host: &str, mode: AuthMode) -> Result<(), Error> {
         match Vigor::form_authentication(self, mode) {
             Ok(payload) => {
-                match Vigor::process_reqwest_response(self.client.delete(Vigor::host_finalize(self, &host)).json(&payload).send()) {
+                match Vigor::process_request_response(ureq::delete(&Vigor::host_finalize(self, &host)).send_json(payload)) {
                     Ok(_) => Ok(()),
                     Err(error) => Err(error)
                 }
@@ -435,7 +461,9 @@ impl Vigor {
     ///
     /// # Examples
     ///
-    /// ```ignore
+    /// ```no_run
+    /// # let mut agent = vigor_agent::Vigor::new().unwrap();
+    /// # agent.init().unwrap();
     /// // assuming you already have an instance called "agent"
     /// agent.patch("http://example.com/claims/", vigor_agent::AuthMode::Auto).unwrap();
     /// ```
@@ -450,7 +478,7 @@ impl Vigor {
                 match Vigor::form_account_payload(self, share_email, use_password, use_ed25519) {
                     Ok(changes) => {
                         payload_mod.insert("new".to_string(), serde_json::Value::Object(changes));
-                        match Vigor::process_reqwest_response(self.client.patch(Vigor::host_finalize(self, &host)).json(&payload_mod).send()) { // TODO update payload to include patch.
+                        match Vigor::process_request_response(ureq::patch(&Vigor::host_finalize(self, &host)).send_json(&payload_mod)) {
                             Ok(_) => Ok(()),
                             Err(error) => Err(error)
                         }
