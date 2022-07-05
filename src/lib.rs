@@ -62,16 +62,25 @@ impl fmt::Display for Error {
     }
 }
 
-// definitions for configuration structs.
-#[derive(serde::Serialize, serde::Deserialize)]
-struct ConfigEd25519Schema {
+/// Configuration structure for Ed25519 authentication, used in `ConfigSchema` structures.
+///
+/// Can be used in serializing and deserializing configuration data, especially those residing inside `ConfigSchema` structures.
+///
+/// **This is not the main agent structure.** See `Vigor` instead, your agent is in another castle.
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
+pub struct ConfigEd25519Schema {
     public: String,
     private: String,
     enabled: bool
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
-struct ConfigSchema {
+/// Configuration structure, used in `Vigor` structures.
+///
+/// Can be used in serializing and deserializing configuration data, especially those residing inside `Vigor` structures.
+///
+/// **This is not the main agent structure.** See `Vigor` instead, your agent is in another castle.
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
+pub struct ConfigSchema {
     preferred_username: String,
     email: String,
     password: String,
