@@ -69,9 +69,12 @@ impl fmt::Display for Error {
 /// **This is not the main agent structure.** See `Vigor` instead, your agent is in another castle.
 #[derive(serde::Serialize, serde::Deserialize, Debug)]
 pub struct ConfigEd25519Schema {
-    public: String,
-    private: String,
-    enabled: bool
+    /// Path to the Ed25519 public key.
+    pub public: String,
+    /// Path to the Ed25519 private key.
+    pub private: String,
+    /// Whether Ed25519 authentication should be used.
+    pub enabled: bool
 }
 
 /// Configuration structure, used in `Vigor` structures.
@@ -81,10 +84,14 @@ pub struct ConfigEd25519Schema {
 /// **This is not the main agent structure.** See `Vigor` instead, your agent is in another castle.
 #[derive(serde::Serialize, serde::Deserialize, Debug)]
 pub struct ConfigSchema {
-    preferred_username: String,
-    email: String,
-    password: String,
-    ed25519: ConfigEd25519Schema
+    /// User's name.
+    pub preferred_username: String,
+    /// User's email.
+    pub email: String,
+    /// Plain-text password, if empty password authentication will not be used.
+    pub password: String,
+    /// Ed25519 authentication configuration structure.
+    pub ed25519: ConfigEd25519Schema
 }
 
 // definitions for transmission structs.
@@ -108,8 +115,10 @@ struct ErrorResponse {
 ///
 /// Consume implemented methods for initialization, see `new` method.
 pub struct Vigor {
-    config: ConfigSchema,
-    path: PathBuf
+    /// Configuration structure.
+    pub config: ConfigSchema,
+    /// Path to configuration file.
+    pub path: PathBuf
 }
 
 impl fmt::Debug for Vigor {
