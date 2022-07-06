@@ -148,11 +148,10 @@ pub enum AuthMode {
 impl Vigor {
     fn get_config_path() -> Result<PathBuf, Error> {
         match home_dir() {
-            Some(home) => {
-                let mut path = PathBuf::from(home);
-                path.set_file_name(".vigor");
-                path.set_extension(".conf");
-                Ok(path)
+            Some(mut home) => {
+                home.push(".vigor");
+                home.set_extension(".conf");
+                Ok(home)
             },
             None => Err(Error {message: "Failed to get user's home directory for Vigor configuration file.".to_owned()})
         }
