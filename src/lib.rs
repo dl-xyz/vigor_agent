@@ -150,7 +150,7 @@ impl Vigor {
         match home_dir() {
             Some(mut home) => {
                 home.push(".vigor");
-                home.set_extension(".conf");
+                home.set_extension("conf");
                 Ok(home)
             },
             None => Err(Error {message: "Failed to get user's home directory for Vigor configuration file.".to_owned()})
